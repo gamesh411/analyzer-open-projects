@@ -1,6 +1,8 @@
 // RUN: %clang_cc1 -fsyntax-only -analyze \
 // RUN:   -analyzer-checker=core,debug.ExprInspection %s -verify
 
+// Handle constructors for default arguments
+// Default arguments in C++ are recomputed at every call, and are therefore local, and not static, variables.
 void clang_analyzer_eval(bool);
 void clang_analyzer_warnIfReached();
 
@@ -22,59 +24,59 @@ struct basic_struct{
   int a;
 };
 
-void f(init_with_list l = init_with_list()){
-  clang_analyzer_eval(l.a==1); // expected-warning {{TRUE}}
+//top-level analyzed function
+void top_f(init_with_list l = init_with_list()){
+  //We expect that the analyzer doesn't assume anything about the parameter
+  clang_analyzer_eval(l.a==1); // expected-warning {{TRUE}} expected-warning {{FALSE}}
 }
 
-void g(init_in_body l = init_in_body()){
-  clang_analyzer_eval(l.a==1); // expected-warning {{TRUE}}
+void top_g(init_in_body l = init_in_body()){
+  //We expect that the analyzer doesn't assume anything about the parameter
+  clang_analyzer_eval(l.a==1); // expected-warning {{TRUE}} expected-warning {{FALSE}}
 }
 
-void h(init_default_member l = init_default_member()){
-  clang_analyzer_eval(l.a==1); // expected-warning {{TRUE}}
+void top_h(init_default_member l = init_default_member()){
+  //We expect that the analyzer doesn't assume anything about the parameter
+  clang_analyzer_eval(l.a==1); // expected-warning {{TRUE}} expected-warning {{FALSE}}
 }
 
-void f2(){
-  init_with_list l;
-  clang_analyzer_eval(l.a==1); // expected-warning {{TRUE}}
+// not-top level analyze functions
+int called_f(init_with_list l = init_with_list()){
+  return l.a;
 }
 
-void f3(init_with_list l){
-  clang_analyzer_eval(l.a==1); //expected-warning {{TRUE}}
+int called_g(init_in_body l = init_in_body()){
+  //We expect that the analyzer assumes the default value (call site test2)
+  return l.a;
 }
 
-void f4(basic_struct l){
-  clang_analyzer_warnIfReached(); //expected-warning {{REACHABLE}}
-  int a = l.a;
-  clang_analyzer_eval(a==0);//xpected-warning {{TRUE}}
-  a = 1/l.a;
-  clang_analyzer_warnIfReached(); //expected-warning {{REACHABLE}}
-
+int called_h(init_default_member l = init_default_member()){
+  //We expect that the analyzer assumes the default value (call site test3)
+  return l.a;
 }
 
-
-void test1 (){
-// f3(init_with_list());
+int plain_parameter_passing(basic_struct l){
+  return l.a;
 }
 
-void test2(){
-  g();
+void test1(){
+  basic_struct b;
+  b.a=1;
+  clang_analyzer_eval(plain_parameter_passing(b)==1); //expected-warning {{TRUE}}
+}
+
+void test2 (){
+  //We expect that the analyzer assumes the default value
+  clang_analyzer_eval(called_f()==1); //expected-warning {{TRUE}}
 }
 
 void test3(){
-  h();
+  //We expect that the analyzer assumes the default value
+  clang_analyzer_eval(called_g()==1); //expected-warning {{TRUE}}
 }
 
 void test4(){
-  init_with_list l;
-  clang_analyzer_eval(l.a==1); //expected-warning {{TRUE}}
-  f3(l);
+  //We expect that the analyzer assumes the default value
+  clang_analyzer_eval(called_h()==1); //expected-warning {{TRUE}}
 }
 
-void test5(){
-  basic_struct s;
-  s.a=0;
-  f4(s);
-  clang_analyzer_warnIfReached(); //expected-warning {{REACHABLE}}
-
-}
